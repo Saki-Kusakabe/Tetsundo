@@ -275,19 +275,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
         enablejsapi: 1, // JavaScript API有効
         autoplay: 0, // 自動再生無効
         start: 0, // 開始位置
-        wmode: 'transparent', // 透明モード
-        html5: 1, // HTML5強制
-        theme: 'dark', // ダークテーマ
-        color: 'red', // プログレスバー色
-        // 追加パラメータでより厳格な制御
-        origin: window.location.origin, // セキュリティ向上
-        widget_referrer: window.location.origin,
-        enablejsapi: 1,
-        hl: 'ja', // 言語設定
-        cc_lang_pref: 'ja', // 字幕言語
-        // 広告とオーバーレイを完全に無効化する試み
-        adtest: 'on', // テスト広告モード
-        vq: 'small' // 低画質で安定性向上
+        html5: 1 // HTML5強制
       },
       events: {
         onReady: (event: YTEvent) => {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import YouTubePlayer from '@/components/YouTubePlayer'
-import { getUserProgress, completeExercise, getCurrentStationInfo } from '@/lib/progressStore'
+import { getUserProgress, completeExercise, type UserProgress } from '@/lib/progressStore'
 
 // YouTubeプレイヤーのスタイル修正 - 最大限強力
 const youtubePlayerStyles = `
@@ -183,7 +183,7 @@ export default function ExercisePage() {
   const [videoUrl, setVideoUrl] = useState('')
   const [isVideoValid, setIsVideoValid] = useState(false)
   const [showSlackShare, setShowSlackShare] = useState(false)
-  const [userProgress, setUserProgress] = useState<any>(null)
+  const [userProgress, setUserProgress] = useState<UserProgress | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [lastCompletedData, setLastCompletedData] = useState<{
     stationProgressed: {
@@ -290,7 +290,7 @@ export default function ExercisePage() {
       if (!webhookUrl) return
 
       const previousStation = yamanoteStations.find(station => 
-        userProgress.completedStations.includes(station.id) &&
+        userProgress?.completedStations.includes(station.id) &&
         station.order === currentStation.order - 1
       )
       
