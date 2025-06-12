@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String?
+  image       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // User progress
+  currentLineId     String?
+  currentStationId  String?
+  totalStationsCompleted Int @default(0)
+  
+  // Relations
+  currentLine       RailwayLine? @relation("CurrentLine", fields: [currentLineId], references: [id])
+  currentStation    Station?     @relation("CurrentStation", fields: [currentStationId], references: [id])
+  progress          UserProgress[]
+  exerciseLogs      ExerciseLog[]
+  
+  @@map("users")
+}
+
+model RailwayLine {
+  id          String    @id @default(cuid())
+  name        String
+  nameEn      String?
+  company     String
+  lineType    String    // JR, 私鉄, 第三セクター
+  color       String?   // 路線カラー
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  stations    Station[]
+  currentUsers User[] @relation("CurrentLine")
+  progress    UserProgress[]
+  
+  @@map("railway_lines")
+}
+
+model Station {
+  id          String    @id @default(cuid())
+  name        String
+  nameEn      String?
+  lineId      String
+  order       Int       // 路線内での駅順序
+  latitude    Float
+  longitude   Float
+  prefCode    String?   // 都道府県コード
+  cityCode    String?   // 市区町村コード
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  line        RailwayLine @relation(fields: [lineId], references: [id])
+  currentUsers User[] @relation("CurrentStation")
+  progress    UserProgress[]
+  
+  @@map("stations")
+}
+
+model UserProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  lineId      String
+  stationId   String
+  completedAt DateTime  @default(now())
+  
+  // Relations
+  user        User        @relation(fields: [userId], references: [id])
+  line        RailwayLine @relation(fields: [lineId], references: [id])
+  station     Station     @relation(fields: [stationId], references: [id])
+  
+  @@unique([userId, stationId])
+  @@map("user_progress")
+}
+
+model ExerciseLog {
+  id          String    @id @default(cuid())
+  userId      String
+  videoUrl    String
+  videoTitle  String?
+  duration    Int       // 動画の長さ（秒）
+  watchTime   Int       // 視聴時間（秒）
+  completionRate Float  // 完了率（0-1）
+  completedAt DateTime  @default(now())
+  stationProgressed String? // 進んだ駅のID
+  
+  // Relations
+  user        User @relation(fields: [userId], references: [id])
+  
+  @@map("exercise_logs")
+}

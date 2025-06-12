@@ -1,4 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚉 Tetsundo - エクササイズ × 全国鉄道制覇ゲーム
+
+YouTubeのエクササイズ動画を実施するごとに日本全国の鉄道路線を1駅ずつ進み、すべての鉄道路線を制覇することを目指す運動継続支援型のWebゲームです。
+
+## 主な機能
+
+- 全国鉄道路線マップ機能（JR・私鉄・第三セクター全路線の地図表示）
+- エクササイズ進捗記録（YouTube API連携）
+- マイページ／進捗ダッシュボード
+- Slack共有機能
+
+## 技術スタック
+
+- フロントエンド: React (Next.js), Tailwind CSS, Mapbox GL JS
+- バックエンド: Ruby on Rails または Go
+- データベース: PostgreSQL + PostGIS
+- 外部API: YouTube iframe API, Firebase Auth
+- デプロイ: Vercel（フロント）, Fly.io／Railway（バックエンド）
+
+## 開発環境のセットアップ
+
+```bash
+# 依存関係のインストール
+npm install
+
+# 環境変数の設定
+cp .env.example .env.local
+
+# 開発サーバーの起動
+npm run dev
+```
+
+## 環境変数
+
+### 必須設定
+- `YOUTUBE_API_KEY` - YouTube Data API v3のキー
+- `MAPBOX_ACCESS_TOKEN` - Mapbox GL JSのアクセストークン
+- `DATABASE_URL` - PostgreSQLデータベースURL
+- `FIREBASE_CONFIG` - Firebase認証設定
+
+## ライセンス
+
+MIT License
 
 ## Getting Started
 
