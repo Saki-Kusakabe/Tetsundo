@@ -24,3 +24,36 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* src/app/globals.css (または適切なCSSファイル) */
+
+/* 動画コンテナのアスペクト比を維持するラッパー */
+.youtube-player-wrapper {
+  position: relative;
+  width: 100%;
+  /* 16:9 のアスペクト比 (高さ = 幅 * 9/16) */
+  padding-bottom: 56.25%;
+  /* (9 / 16) * 100% */
+  height: 0;
+  /* padding-bottomで高さを確保するため、heightは0にする */
+  overflow: hidden;
+  /* コンテンツがはみ出さないように */
+  background-color: black;
+  border-radius: 0.5rem;
+  /* rounded-lg に相当 */
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  /* shadow-md に相当 */
+  border: 2px solid #e5e7eb;
+  /* border に相当 */
+}
+
+/* iframe は親要素の絶対位置に配置し、100%のサイズにする */
+.youtube-player-wrapper iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* iframeのデフォルトボーダーを削除 */
+}

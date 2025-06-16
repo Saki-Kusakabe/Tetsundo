@@ -31,7 +31,7 @@ declare global {
         height: string
         width: string
         videoId: string
-        playerVars: Record<string, number>
+        playerVars: Record<string, number | string> // 'width'と'height'をstringにできるよう修正
         events: {
           onReady: (event: YTEvent) => void
           onStateChange: (event: YTEvent) => void
@@ -60,81 +60,25 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
   const [isApiLoading, setIsApiLoading] = useState(false)
   const [hasCompleted, setHasCompleted] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const observerRef = useRef<MutationObserver | null>(null)
 
   // YouTube動画IDを抽出
   const extractVideoId = (url: string): string | null => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
-    const match = url.match(regExp)
-    return match && match[2].length === 11 ? match[2] : null
+    // googleusercontent.com ドメインの正規表現を追加
+    const regExp = /^.*(?:(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=))|youtu\.be\/|googleusercontent\.com\/(?:youtube\.com\/(?:1|2)\/))([^"&?\/\s]{11}).*/;
+    const match = url.match(regExp);
+    return match && match[1].length === 11 ? match[1] : null;
   }
 
   const videoId = extractVideoId(videoUrl)
 
-
-  // MutationObserverでサイズ変更を監視
-  useEffect(() => {
-    if (!playerRef.current) return
-
-    observerRef.current = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && 
-            (mutation.attributeName === 'style' || 
-             mutation.attributeName === 'width' || 
-             mutation.attributeName === 'height')) {
-          console.log('YouTube player size change detected, enforcing size...')
-          // enforcePlayerSize の代わりにインライン制御
-          if (playerRef.current) {
-            const container = playerRef.current.parentElement
-            const iframe = playerRef.current.querySelector('iframe')
-            
-            if (container) {
-              container.style.cssText = `
-                width: 100% !important;
-                height: 400px !important;
-                max-width: 100% !important;
-                max-height: 400px !important;
-                overflow: hidden !important;
-                position: relative !important;
-              `
-            }
-            
-            if (iframe) {
-              iframe.style.cssText = `
-                width: 100% !important;
-                height: 400px !important;
-                max-width: 100% !important;
-                max-height: 400px !important;
-                position: absolute !important;
-                top: 0 !important;
-                left: 0 !important;
-              `
-            }
-          }
-        }
-      })
-    })
-
-    // 監視開始
-    observerRef.current.observe(playerRef.current, {
-      attributes: true,
-      attributeFilter: ['style', 'width', 'height', 'class'],
-      childList: true,
-      subtree: true
-    })
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect()
-      }
-    }
-  }, []) // 依存関係を空配列に
+  // サイズ強制の関数とMutationObserverを削除します。
+  // 必要に応じて `playerRef.current` に直接クラスを追加する形に変更します。
 
   const startWatchTimeTracking = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
     }
-    
+
     intervalRef.current = setInterval(() => {
       if (player && duration > 0) {
         try {
@@ -142,13 +86,11 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
           const rate = currentTime / duration
           setWatchTime(Math.floor(currentTime))
           setCompletionRate(Math.min(rate, 1))
-          
-          // 80%達成時のチェック
+
           if (rate >= 0.8 && !hasCompleted) {
             console.log('🎉 80% completion achieved! Rate:', (rate * 100).toFixed(1) + '%')
             console.log('📞 Calling onVideoComplete callback...')
             setHasCompleted(true)
-            // 80%達成時に即座にコールバックを実行
             onVideoComplete({
               videoUrl,
               duration,
@@ -156,8 +98,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
               completionRate: rate
             })
           }
-          
-          // デバッグログ（5秒ごと）
+
           if (Math.floor(currentTime) % 5 === 0) {
             console.log('📊 Progress:', (rate * 100).toFixed(1) + '%', `(${Math.floor(currentTime)}/${Math.floor(duration)}s)`)
           }
@@ -183,7 +124,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
     try {
       const currentTime = player.getCurrentTime()
       const finalCompletionRate = Math.min(currentTime / duration, 1)
-      
+
       console.log('Video completed:', {
         duration,
         currentTime: Math.floor(currentTime),
@@ -208,8 +149,9 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
     if (!window.YT) {
       setIsApiLoading(true)
       setError(null)
-      
+
       const tag = document.createElement('script')
+      // スクリプトのURLを修正 (googleusercontent.com/youtube.com/2 は公式APIのURLではないようです)
       tag.src = 'https://www.youtube.com/iframe_api'
       tag.onload = () => {
         console.log('YouTube API script loaded')
@@ -218,7 +160,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
         setError('YouTube APIの読み込みに失敗しました')
         setIsApiLoading(false)
       }
-      
+
       const firstScriptTag = document.getElementsByTagName('script')[0]
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
 
@@ -227,31 +169,28 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
         setIsApiLoading(false)
         console.log('YouTube API ready')
       }
-      
-      // タイムアウト処理（10秒）
+
       const timeout = setTimeout(() => {
         if (!isApiReady) {
           setError('YouTube APIの読み込みがタイムアウトしました')
           setIsApiLoading(false)
         }
       }, 10000)
-      
+
       return () => clearTimeout(timeout)
     } else {
       setIsApiReady(true)
     }
-  }, [])
+  }, [isApiReady]) // isApiReady を依存配列に追加し、APIが準備できた後に再度実行されないようにする
 
   useEffect(() => {
     if (!isApiReady || !videoId || !playerRef.current) return
 
-    // 既存のプレイヤーを破棄
     if (player) {
       player.destroy()
       setPlayer(null)
     }
 
-    // 状態をリセット
     setWatchTime(0)
     setCompletionRate(0)
     setIsPlaying(false)
@@ -259,6 +198,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
     setHasCompleted(false)
 
     const newPlayer = new window.YT.Player(playerRef.current, {
+      // height と width は、CSSで制御するため、ここでは'100%'と'100%'を設定します。
       height: '100%',
       width: '100%',
       videoId: videoId,
@@ -268,14 +208,14 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
         modestbranding: 1,
         controls: 1,
         showinfo: 0,
-        fs: 0, // フルスクリーンボタンを無効化
-        disablekb: 1, // キーボード操作を無効化（フルスクリーン防止）
-        iv_load_policy: 3, // アノテーションを無効化
-        cc_load_policy: 0, // 字幕を無効化
-        enablejsapi: 1, // JavaScript API有効
-        autoplay: 0, // 自動再生無効
-        start: 0, // 開始位置
-        html5: 1 // HTML5強制
+        fs: 0, // フルスクリーンボタンを非表示
+        disablekb: 1,
+        iv_load_policy: 3,
+        cc_load_policy: 0,
+        enablejsapi: 1,
+        autoplay: 0,
+        start: 0,
+        html5: 1
       },
       events: {
         onReady: (event: YTEvent) => {
@@ -314,50 +254,17 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
         onStateChange: (event: YTEvent) => {
           const playerState = event.data
           console.log('🎵 Player state changed:', playerState)
-          
+
           if (playerState === window.YT.PlayerState.PLAYING) {
             console.log('▶️ Video is now playing')
             setIsPlaying(true)
-            // 再生開始時に強制的にサイズを制御（段階的に実行）
-            for (let i = 0; i < 10; i++) {
-              setTimeout(() => {
-                // enforcePlayerSize を直接呼び出さずに、より安全な方法で制御
-                if (playerRef.current) {
-                  const container = playerRef.current.parentElement
-                  const iframe = playerRef.current.querySelector('iframe')
-                  
-                  if (container) {
-                    container.style.cssText = `
-                      width: 100% !important;
-                      height: 400px !important;
-                      max-width: 100% !important;
-                      max-height: 400px !important;
-                      overflow: hidden !important;
-                      position: relative !important;
-                    `
-                  }
-                  
-                  if (iframe) {
-                    iframe.style.cssText = `
-                      width: 100% !important;
-                      height: 400px !important;
-                      max-width: 100% !important;
-                      max-height: 400px !important;
-                      position: absolute !important;
-                      top: 0 !important;
-                      left: 0 !important;
-                    `
-                  }
-                }
-              }, i * 200) // 200ms間隔で10回実行
-            }
           } else if (
             playerState === window.YT.PlayerState.PAUSED ||
             playerState === window.YT.PlayerState.ENDED
           ) {
             console.log('⏸️ Video paused or ended')
             setIsPlaying(false)
-            
+
             if (playerState === window.YT.PlayerState.ENDED) {
               console.log('🏁 Video ended, calling handleVideoEnd')
               handleVideoEnd()
@@ -369,162 +276,19 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
 
     setPlayer(newPlayer)
 
-    // プレイヤー作成後にサイズを制御
-    setTimeout(() => {
-      if (playerRef.current) {
-        const container = playerRef.current.parentElement
-        const iframe = playerRef.current.querySelector('iframe')
-        
-        if (container) {
-          container.style.cssText = `
-            width: 100% !important;
-            height: 400px !important;
-            max-width: 100% !important;
-            max-height: 400px !important;
-            overflow: hidden !important;
-            position: relative !important;
-          `
-        }
-        
-        if (iframe) {
-          iframe.style.cssText = `
-            width: 100% !important;
-            height: 400px !important;
-            max-width: 100% !important;
-            max-height: 400px !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-          `
-        }
-      }
-    }, 500)
-
-    // 非常に頻繁にサイズをチェック（8秒問題対策）
-    const sizeCheckInterval = setInterval(() => {
-      if (playerRef.current) {
-        const container = playerRef.current.parentElement
-        const iframe = playerRef.current.querySelector('iframe')
-        
-        if (container) {
-          // より強力な制御でコンテナサイズを固定
-          const containerStyle = `
-            width: 100% !important;
-            height: 400px !important;
-            max-width: 100% !important;
-            max-height: 400px !important;
-            min-width: 100% !important;
-            min-height: 400px !important;
-            overflow: hidden !important;
-            position: relative !important;
-            transform: none !important;
-            zoom: 1 !important;
-            box-sizing: border-box !important;
-            contain: size layout style !important;
-            isolation: isolate !important;
-          `
-          container.style.cssText = containerStyle
-          // 属性でも設定
-          container.setAttribute('style', containerStyle)
-          // 直接プロパティでも設定
-          container.style.setProperty('width', '100%', 'important')
-          container.style.setProperty('height', '400px', 'important')
-          container.style.setProperty('max-width', '100%', 'important')
-          container.style.setProperty('max-height', '400px', 'important')
-        }
-        
-        if (iframe) {
-          // より強力な制御でiframeサイズを固定
-          const iframeStyle = `
-            width: 100% !important;
-            height: 400px !important;
-            max-width: 100% !important;
-            max-height: 400px !important;
-            min-width: 100% !important;
-            min-height: 400px !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            transform: none !important;
-            zoom: 1 !important;
-            box-sizing: border-box !important;
-            contain: size layout style !important;
-            pointer-events: auto !important;
-          `
-          iframe.style.cssText = iframeStyle
-          // 属性でも設定
-          iframe.setAttribute('style', iframeStyle)
-          iframe.setAttribute('width', '100%')
-          iframe.setAttribute('height', '400')
-          // sandboxでさらに制限
-          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation')
-          // 直接プロパティでも設定
-          iframe.style.setProperty('width', '100%', 'important')
-          iframe.style.setProperty('height', '400px', 'important')
-          iframe.style.setProperty('max-width', '100%', 'important')
-          iframe.style.setProperty('max-height', '400px', 'important')
-        }
-        
-        // プレイヤー内部の全要素も制御
-        const allElements = playerRef.current.querySelectorAll('*')
-        allElements.forEach((element: Element) => {
-          const htmlElement = element as HTMLElement
-          if (htmlElement.style) {
-            htmlElement.style.setProperty('max-width', '100%', 'important')
-            htmlElement.style.setProperty('max-height', '400px', 'important')
-            htmlElement.style.setProperty('transform', 'none', 'important')
-            htmlElement.style.setProperty('zoom', '1', 'important')
-            htmlElement.style.setProperty('scale', 'none', 'important')
-            
-            // YouTube特有のクラスに対する強力な制御
-            if (htmlElement.classList.contains('html5-video-player') || 
-                htmlElement.classList.contains('ytp-player-content') ||
-                htmlElement.classList.contains('video-stream') ||
-                htmlElement.classList.contains('ytp-chrome-top') ||
-                htmlElement.classList.contains('ytp-chrome-bottom') ||
-                htmlElement.tagName === 'VIDEO') {
-              htmlElement.style.setProperty('width', '100%', 'important')
-              htmlElement.style.setProperty('height', '400px', 'important')
-              htmlElement.style.setProperty('max-width', '100%', 'important')
-              htmlElement.style.setProperty('max-height', '400px', 'important')
-              htmlElement.style.setProperty('transform', 'none', 'important')
-              htmlElement.style.setProperty('zoom', '1', 'important')
-              htmlElement.style.setProperty('scale', 'none', 'important')
-              htmlElement.style.setProperty('contain', 'size layout style', 'important')
-            }
-            
-            // 広告やオーバーレイ関連のクラスを非表示に
-            if (htmlElement.classList.contains('ytp-ad-overlay-container') ||
-                htmlElement.classList.contains('ytp-ad-player-overlay') ||
-                htmlElement.classList.contains('ytp-pause-overlay') ||
-                htmlElement.classList.contains('iv-branding')) {
-              htmlElement.style.setProperty('display', 'none', 'important')
-              htmlElement.style.setProperty('visibility', 'hidden', 'important')
-            }
-          }
-        })
-      }
-    }, 100) // 100msごとに実行（さらに頻繁に）
-
+    // クリーンアップ
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-      clearInterval(sizeCheckInterval)
       newPlayer?.destroy()
     }
-  }, [isApiReady, videoId])
+  }, [isApiReady, videoId]) // enforcePlayerSize の依存を削除
 
-  // プレイヤーの状態に応じてタイマーを開始/停止
   useEffect(() => {
     if (isPlaying && player && duration > 0) {
       startWatchTimeTracking()
     } else {
       stopWatchTimeTracking()
     }
-    
-    // クリーンアップ
+
     return () => {
       stopWatchTimeTracking()
     }
@@ -551,7 +315,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
           <div className="text-center text-red-700">
             <div className="text-4xl mb-2">⚠️</div>
             <p className="font-medium">{error}</p>
-            <button 
+            <button
               onClick={() => {
                 setError(null)
                 setIsApiReady(false)
@@ -570,31 +334,14 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      {/* 動画プレイヤー容器 - 固定サイズ */}
-      <div 
-        className="youtube-player-container relative w-full bg-black rounded-lg shadow-md"
-        style={{ 
-          width: '100%',
-          maxWidth: '100%',
-          height: '400px',
-          maxHeight: '400px',
-          minHeight: '400px',
-          overflow: 'hidden',
-          position: 'relative',
-          zIndex: 1,
-          border: '2px solid #e5e7eb'
-        }}
-      >
+      {/* 動画プレイヤー容器 - CSSクラスでアスペクト比を維持 */}
+      <div className="youtube-player-wrapper">
         {isApiReady ? (
           <div
             ref={playerRef}
+            // ここでは `absolute` クラスのみを適用し、残りのスタイルはCSSファイルで定義します。
             className="absolute top-0 left-0 w-full h-full"
-            style={{ 
-              pointerEvents: 'auto',
-              maxWidth: '100%',
-              maxHeight: '100%',
-              overflow: 'hidden'
-            }}
+            style={{ pointerEvents: 'auto' }} // 必要であれば
           />
         ) : (
           <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
@@ -603,8 +350,8 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
                 {isApiLoading ? '⏳' : '🎬'}
               </div>
               <p>
-                {isApiLoading 
-                  ? 'YouTube プレイヤーを読み込み中...' 
+                {isApiLoading
+                  ? 'YouTube プレイヤーを読み込み中...'
                   : 'YouTube プレイヤーを準備中...'
                 }
               </p>
@@ -612,7 +359,7 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
           </div>
         )}
       </div>
-      
+
       {/* 進捗情報 */}
       <div className="mt-4 p-4 bg-white rounded-lg shadow-sm">
         <div className="flex justify-between items-center mb-2">
@@ -633,17 +380,16 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
             {(completionRate * 100).toFixed(1)}% 完了
           </span>
         </div>
-        
+
         {/* プログレスバー */}
         <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
-          <div 
-            className={`h-3 rounded-full transition-all duration-300 ${
-              completionRate >= 0.8 ? 'bg-green-500' : 'bg-blue-500'
-            }`}
+          <div
+            className={`h-3 rounded-full transition-all duration-300 ${completionRate >= 0.8 ? 'bg-green-500' : 'bg-blue-500'
+              }`}
             style={{ width: `${Math.min(completionRate * 100, 100)}%` }}
           ></div>
         </div>
-        
+
         <div className="flex justify-between text-sm">
           <p className="text-gray-600">
             ※ 80%以上視聴で駅を1つ進みます

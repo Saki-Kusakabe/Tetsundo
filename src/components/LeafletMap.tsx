@@ -26,22 +26,29 @@ interface LeafletMapProps {
   zoom?: number
 }
 
-export default function LeafletMap({ 
-  railwayLines, 
+export default function LeafletMap({
+  railwayLines,
   userProgress = [],
   center = [35.6812, 139.7671], // 東京駅 (lat, lng)
   zoom = 10
 }: LeafletMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
+  const mapInstance = useRef<any>(null)
 
   useEffect(() => {
     const loadMap = async () => {
       try {
+        // 既存のマップインスタンスをクリーンアップ
+        if (mapInstance.current) {
+          mapInstance.current.remove()
+          mapInstance.current = null
+        }
+
         console.log('Loading Leaflet map...')
-        
+
         // Dynamic import for Leaflet
         const L = await import('leaflet')
-        
+
         // Import CSS (for client-side)
         if (typeof window !== 'undefined') {
           const leafletCSS = document.createElement('link')
@@ -49,7 +56,7 @@ export default function LeafletMap({
           leafletCSS.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
           document.head.appendChild(leafletCSS)
         }
-        
+
         // Fix for default markers
         delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
         L.Icon.Default.mergeOptions({
@@ -61,17 +68,17 @@ export default function LeafletMap({
         if (!mapContainer.current) return
 
         console.log('Creating Leaflet map...')
-        
+
         // Create map
-        const map = L.map(mapContainer.current).setView(center, zoom)
-        
+        mapInstance.current = L.map(mapContainer.current).setView(center, zoom)
+
         console.log('Map created, adding tile layer...')
-        
+
         // Add tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap contributors'
-        }).addTo(map)
-        
+        }).addTo(mapInstance.current)
+
         console.log('Tile layer added, drawing railway lines...')
 
         // 鉄道路線を描画
@@ -86,7 +93,7 @@ export default function LeafletMap({
               color: line.color,
               weight: 4,
               opacity: 0.8
-            }).addTo(map).bindPopup(`
+            }).addTo(mapInstance.current).bindPopup(`
               <strong>${line.name}</strong><br>
               ${line.company} / ${line.lineType}
             `)
@@ -94,7 +101,7 @@ export default function LeafletMap({
             // 駅マーカーを追加
             line.stations.forEach((station) => {
               const isCompleted = userProgress.includes(station.id)
-              
+
               const marker = L.circleMarker([station.latitude, station.longitude], {
                 radius: 6,
                 fillColor: isCompleted ? '#10B981' : '#6B7280',
@@ -102,7 +109,7 @@ export default function LeafletMap({
                 weight: 2,
                 opacity: 1,
                 fillOpacity: 0.8
-              }).addTo(map)
+              }).addTo(mapInstance.current)
 
               marker.bindPopup(`
                 <div style="font-family: sans-serif;">
@@ -114,10 +121,10 @@ export default function LeafletMap({
                     padding: 2px 6px; 
                     border-radius: 4px; 
                     font-size: 10px; 
-                    ${isCompleted 
-                      ? 'background-color: #DEF7EC; color: #047857;' 
-                      : 'background-color: #F3F4F6; color: #374151;'
-                    }
+                    ${isCompleted
+                  ? 'background-color: #DEF7EC; color: #047857;'
+                  : 'background-color: #F3F4F6; color: #374151;'
+                }
                   ">
                     ${isCompleted ? '✓ 通過済み' : '未通過'}
                   </span>
@@ -126,24 +133,28 @@ export default function LeafletMap({
             })
           }
         })
-          
+
         console.log('Map setup complete!')
-        
-        return () => {
-          map.remove()
-        }
       } catch (error) {
         console.error('Error loading Leaflet map:', error)
       }
     }
 
     loadMap()
+
+    // クリーンアップ関数
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove()
+        mapInstance.current = null
+      }
+    }
   }, [railwayLines, userProgress, center, zoom])
 
   return (
     <div className="w-full h-96 rounded-lg overflow-hidden shadow-md">
-      <div 
-        ref={mapContainer} 
+      <div
+        ref={mapContainer}
         className="w-full h-full bg-gray-100"
         style={{ minHeight: '384px' }}
       />

@@ -23,6 +23,7 @@ const youtubePlayerStyles = `
     isolation: isolate !important;
     resize: none !important;
     box-sizing: border-box !important;
+    will-change: transform !important;
   }
   
   /* iframe制御 - sandboxと制約 */
@@ -43,6 +44,7 @@ const youtubePlayerStyles = `
     resize: none !important;
     pointer-events: auto !important;
     box-sizing: border-box !important;
+    will-change: transform !important;
   }
   
   /* 全ての子要素制御 - より厳格 */
@@ -56,6 +58,7 @@ const youtubePlayerStyles = `
     zoom: 1 !important;
     resize: none !important;
     contain: size !important;
+    will-change: transform !important;
   }
   
   /* YouTube特有のクラス制御 - 全YouTube要素 */
@@ -75,6 +78,7 @@ const youtubePlayerStyles = `
     zoom: 1 !important;
     contain: size layout style !important;
     resize: none !important;
+    will-change: transform !important;
   }
   
   /* 広告とオーバーレイを完全無効化 */
@@ -102,6 +106,7 @@ const youtubePlayerStyles = `
     zoom: 1 !important;
     max-width: 100% !important;
     max-height: 400px !important;
+    will-change: transform !important;
   }
   
   /* フルスクリーン制御 */
@@ -113,6 +118,7 @@ const youtubePlayerStyles = `
     width: 100% !important;
     height: 400px !important;
     transform: none !important;
+    will-change: transform !important;
   }
   
   /* CSS Grid/Flexbox内での制御 */
@@ -179,12 +185,25 @@ const yamanoteStations = [
   { id: 'kanda', name: '神田駅', order: 29 }
 ]
 
+// YouTube Data APIの型定義
+interface YouTubeVideoInfo {
+  id: string
+  title: string
+  thumbnailUrl: string
+  duration: string
+}
+
+// チャンネル名
+const CHANNEL_NAME = 'MarinaTakewaki'
+
 export default function ExercisePage() {
   const [videoUrl, setVideoUrl] = useState('')
   const [isVideoValid, setIsVideoValid] = useState(false)
   const [showSlackShare, setShowSlackShare] = useState(false)
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [videoInfoList, setVideoInfoList] = useState<YouTubeVideoInfo[]>([])
+  const [isLoadingVideos, setIsLoadingVideos] = useState(true)
   const [lastCompletedData, setLastCompletedData] = useState<{
     stationProgressed: {
       name: string
@@ -192,7 +211,7 @@ export default function ExercisePage() {
     }
     user: { totalStationsCompleted: number }
   } | null>(null)
-  
+
   // コンポーネント初期化時に進捗を読み込み（クライアントサイドのみ）
   useEffect(() => {
     setUserProgress(getUserProgress())
@@ -216,7 +235,7 @@ export default function ExercisePage() {
     }
     return yamanoteStations.find(station => station.id === userProgress.currentStation) || yamanoteStations[0]
   }, [userProgress?.currentStation])
-  
+
   const nextStation = useMemo(() => {
     const currentIndex = yamanoteStations.findIndex(station => station.id === currentStation.id)
     return yamanoteStations[currentIndex + 1] || null
@@ -232,20 +251,20 @@ export default function ExercisePage() {
       console.log('🎉 エクササイズ完了コールバック呼び出し:', data)
       console.log('現在の駅:', currentStation)
       console.log('次の駅:', nextStation)
-      
+
       // 次の駅があるかチェック
       if (!nextStation) {
         alert('🎉 山手線を完全制覇しました！おめでとうございます！')
         return
       }
-      
+
       // 進捗管理システムを使って駅を進める
       const nextStationName = completeExercise()
-      
+
       // 進捗を再読み込み
       const updatedProgress = getUserProgress()
       setUserProgress(updatedProgress)
-      
+
       if (nextStationName) {
         // 完了データを設定
         const completionResult = {
@@ -255,14 +274,14 @@ export default function ExercisePage() {
           },
           user: { totalStationsCompleted: updatedProgress.completedStations.length }
         }
-        
+
         setLastCompletedData(completionResult)
         setShowSlackShare(true)
-        
+
         // 成功メッセージ表示
         alert(`🎉 おめでとうございます！\n${nextStationName}に到着しました！\n\n累計制覇駅数: ${updatedProgress.completedStations.length}駅`)
       }
-      
+
     } catch (error) {
       console.error('Error handling video completion:', error)
       alert('エラーが発生しました。もう一度お試しください。')
@@ -289,11 +308,11 @@ export default function ExercisePage() {
       const webhookUrl = prompt('Slack Webhook URLを入力してください（任意）:')
       if (!webhookUrl) return
 
-      const previousStation = yamanoteStations.find(station => 
+      const previousStation = yamanoteStations.find(station =>
         userProgress?.completedStations.includes(station.id) &&
         station.order === currentStation.order - 1
       )
-      
+
       const slackMessage = {
         line: lastCompletedData.stationProgressed.line?.name || '不明な路線',
         fromStation: previousStation?.name || currentStation.name,
@@ -312,12 +331,71 @@ export default function ExercisePage() {
       console.log('Slack共有データ:', slackMessage)
       alert('Slackに投稿しました！（モック）')
       setShowSlackShare(false)
-      
+
     } catch (error) {
       console.error('Slack share error:', error)
       alert('Slackへの投稿中にエラーが発生しました。')
     }
   }
+
+  // YouTube Data APIから動画情報を取得
+  const fetchVideoInfo = useCallback(async () => {
+    try {
+      const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY
+      if (!apiKey) {
+        console.error('YouTube API key is not set')
+        return
+      }
+
+      // チャンネルの動画を検索
+      const response = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${CHANNEL_NAME}&type=video&maxResults=50&key=${apiKey}`
+      )
+      const data = await response.json()
+
+      if (data.items) {
+        // 動画IDのリストを作成
+        const videoIds = data.items.map((item: any) => item.id.videoId)
+
+        // 動画の詳細情報を取得
+        const detailsResponse = await fetch(
+          `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoIds.join(',')}&key=${apiKey}`
+        )
+        const detailsData = await detailsResponse.json()
+
+        if (detailsData.items) {
+          // 動画情報を整形
+          const videos = detailsData.items.map((item: any) => ({
+            id: item.id,
+            title: item.snippet.title,
+            thumbnailUrl: item.snippet.thumbnails.medium.url,
+            duration: item.contentDetails.duration
+          }))
+
+          // 動画をランダムにシャッフル
+          const shuffledVideos = videos.sort(() => Math.random() - 0.5)
+          // 最初の6つの動画を選択
+          setVideoInfoList(shuffledVideos.slice(0, 6))
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching video info:', error)
+    } finally {
+      setIsLoadingVideos(false)
+    }
+  }, [])
+
+  // 初回読み込み時に動画を取得
+  useEffect(() => {
+    fetchVideoInfo()
+  }, [fetchVideoInfo])
+
+  // 動画を再読み込みする関数
+  const reloadVideos = useCallback(() => {
+    setIsLoadingVideos(true)
+    setVideoInfoList([])
+    fetchVideoInfo()
+  }, [fetchVideoInfo])
 
   // ローディング中はサーバーと同じ初期状態を表示
   if (!isLoaded || !userProgress) {
@@ -325,7 +403,7 @@ export default function ExercisePage() {
       <div className="min-h-screen bg-gray-50">
         {/* インラインスタイル追加 */}
         <style dangerouslySetInnerHTML={{ __html: youtubePlayerStyles }} />
-        
+
         {/* Header */}
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -333,7 +411,7 @@ export default function ExercisePage() {
               <div className="flex items-center">
                 <h1 className="text-2xl font-bold text-gray-900">🚉 Tetsundo</h1>
               </div>
-              
+
               {/* Navigation */}
               <nav className="hidden md:flex space-x-8">
                 <Link href="/" className="text-gray-600 hover:text-gray-900">ホーム</Link>
@@ -360,7 +438,7 @@ export default function ExercisePage() {
     <div className="min-h-screen bg-gray-50">
       {/* インラインスタイル追加 */}
       <style dangerouslySetInnerHTML={{ __html: youtubePlayerStyles }} />
-      
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -368,7 +446,7 @@ export default function ExercisePage() {
             <div className="flex items-center">
               <h1 className="text-2xl font-bold text-gray-900">🚉 Tetsundo</h1>
             </div>
-            
+
             {/* Navigation */}
             <nav className="hidden md:flex space-x-8">
               <Link href="/" className="text-gray-600 hover:text-gray-900">ホーム</Link>
@@ -407,11 +485,11 @@ export default function ExercisePage() {
               <span className="text-xl font-bold">{userProgress.completedStations.length}</span> / 29駅
             </div>
           </div>
-          
+
           {/* 進捗バー */}
           <div className="mt-4">
             <div className="w-full bg-blue-200 rounded-full h-2">
-              <div 
+              <div
                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${(userProgress.completedStations.length / 29) * 100}%` }}
               ></div>
@@ -515,158 +593,57 @@ export default function ExercisePage() {
 
         {/* おすすめ動画 */}
         <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-xl font-semibold mb-4">おすすめエクササイズ動画（10-15分）</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* 初心者向けヨガ */}
-            <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="aspect-video bg-gray-100 rounded mb-3 flex items-center justify-center">
-                <span className="text-2xl">🧘‍♀️</span>
-              </div>
-              <h4 className="font-medium mb-1">初心者向けヨガ（10分）</h4>
-              <p className="text-sm text-gray-600 mb-3">朝の軽いストレッチに最適</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setVideoUrl('https://www.youtube.com/watch?v=v7AYKMP6rOE')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  この動画を使用
-                </button>
-                <a
-                  href="https://www.youtube.com/watch?v=v7AYKMP6rOE"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  YouTube
-                </a>
-              </div>
-            </div>
-
-            {/* 自宅筋トレ */}
-            <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="aspect-video bg-gray-100 rounded mb-3 flex items-center justify-center">
-                <span className="text-2xl">💪</span>
-              </div>
-              <h4 className="font-medium mb-1">自宅で筋トレ（15分）</h4>
-              <p className="text-sm text-gray-600 mb-3">器具不要の全身トレーニング</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setVideoUrl('https://www.youtube.com/watch?v=gC_L9qAHVJ8')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  この動画を使用
-                </button>
-                <a
-                  href="https://www.youtube.com/watch?v=gC_L9qAHVJ8"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  YouTube
-                </a>
-              </div>
-            </div>
-
-            {/* 有酸素運動 */}
-            <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="aspect-video bg-gray-100 rounded mb-3 flex items-center justify-center">
-                <span className="text-2xl">🏃‍♂️</span>
-              </div>
-              <h4 className="font-medium mb-1">有酸素運動（12分）</h4>
-              <p className="text-sm text-gray-600 mb-3">脂肪燃焼効果の高いワークアウト</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setVideoUrl('https://www.youtube.com/watch?v=ML6XLzMMz20')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  この動画を使用
-                </button>
-                <a
-                  href="https://www.youtube.com/watch?v=ML6XLzMMz20"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  YouTube
-                </a>
-              </div>
-            </div>
-
-            {/* ストレッチ */}
-            <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="aspect-video bg-gray-100 rounded mb-3 flex items-center justify-center">
-                <span className="text-2xl">🤸‍♀️</span>
-              </div>
-              <h4 className="font-medium mb-1">全身ストレッチ（12分）</h4>
-              <p className="text-sm text-gray-600 mb-3">運動後のクールダウンに</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setVideoUrl('https://www.youtube.com/watch?v=K6I24WgiiPw')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  この動画を使用
-                </button>
-                <a
-                  href="https://www.youtube.com/watch?v=K6I24WgiiPw"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  YouTube
-                </a>
-              </div>
-            </div>
-
-            {/* ピラティス */}
-            <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="aspect-video bg-gray-100 rounded mb-3 flex items-center justify-center">
-                <span className="text-2xl">🤸‍♂️</span>
-              </div>
-              <h4 className="font-medium mb-1">ピラティス（15分）</h4>
-              <p className="text-sm text-gray-600 mb-3">体幹強化とバランス向上</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setVideoUrl('https://www.youtube.com/watch?v=4C-gxOE0j7s')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  この動画を使用
-                </button>
-                <a
-                  href="https://www.youtube.com/watch?v=4C-gxOE0j7s"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  YouTube
-                </a>
-              </div>
-            </div>
-
-            {/* ダンスワークアウト */}
-            <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="aspect-video bg-gray-100 rounded mb-3 flex items-center justify-center">
-                <span className="text-2xl">💃</span>
-              </div>
-              <h4 className="font-medium mb-1">ダンスワークアウト（14分）</h4>
-              <p className="text-sm text-gray-600 mb-3">楽しく踊って運動不足解消</p>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setVideoUrl('https://www.youtube.com/watch?v=Fg8GhJpbGHE')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  この動画を使用
-                </button>
-                <a
-                  href="https://www.youtube.com/watch?v=Fg8GhJpbGHE"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                >
-                  YouTube
-                </a>
-              </div>
-            </div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-semibold">おすすめエクササイズ動画</h3>
+            <button
+              onClick={reloadVideos}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+            >
+              動画を更新
+            </button>
           </div>
+          {isLoadingVideos ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">動画情報を読み込み中...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {videoInfoList.map((video) => (
+                <div key={video.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="aspect-video relative">
+                    <img
+                      src={video.thumbnailUrl}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
+                      {video.duration}
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <h4 className="font-medium mb-2 line-clamp-2">{video.title}</h4>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setVideoUrl(`https://www.youtube.com/watch?v=${video.id}`)}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
+                      >
+                        この動画を使用
+                      </button>
+                      <a
+                        href={`https://www.youtube.com/watch?v=${video.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
+                      >
+                        YouTube
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>
