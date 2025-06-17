@@ -195,7 +195,7 @@ interface YouTubeVideoInfo {
 
 // チャンネル名
 const CHANNEL_NAME = 'MarinaTakewaki'
-const CHANNEL_ID = 'UCnq8vG8CU2l1WUvdhUO-2zw'
+const CHANNEL_ID = 'UCw7HTQv0F4CB9zGRhqosYsg'
 const MAX_RESULTS = 30
 
 export default function ExercisePage() {
