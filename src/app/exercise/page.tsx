@@ -186,32 +186,6 @@ const yamanoteStations = [
 ]
 
 // YouTube APIのレスポンス型定義
-interface YouTubeSearchResponse {
-  items: Array<{
-    id: {
-      videoId: string
-    }
-  }>
-}
-
-interface YouTubeVideoDetails {
-  items: Array<{
-    id: string
-    snippet: {
-      title: string
-      thumbnails: {
-        high: {
-          url: string
-        }
-      }
-    }
-    contentDetails: {
-      duration: string
-    }
-  }>
-}
-
-// YouTube Data APIの型定義
 interface YouTubeVideoInfo {
   id: string
   title: string
