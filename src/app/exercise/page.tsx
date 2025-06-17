@@ -195,6 +195,8 @@ interface YouTubeVideoInfo {
 
 // チャンネル名
 const CHANNEL_NAME = 'MarinaTakewaki'
+const CHANNEL_ID = 'UCnq8vG8CU2l1WUvdhUO-2zw'
+const MAX_RESULTS = 30
 
 export default function ExercisePage() {
   const [videoUrl, setVideoUrl] = useState('')
@@ -211,6 +213,7 @@ export default function ExercisePage() {
     }
     user: { totalStationsCompleted: number }
   } | null>(null)
+  const [errorMsg, setErrorMsg] = useState('')
 
   // コンポーネント初期化時に進捗を読み込み（クライアントサイドのみ）
   useEffect(() => {
@@ -376,65 +379,55 @@ export default function ExercisePage() {
     }
   }
 
-  // YouTube動画を取得する関数
   const fetchVideos = useCallback(async () => {
+    setIsLoadingVideos(true)
+    setErrorMsg('')
     try {
-      setIsLoadingVideos(true)
       const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY
       if (!apiKey) {
-        throw new Error('YouTube API key is not set')
+        setErrorMsg('YouTube APIキーが設定されていません')
+        setIsLoadingVideos(false)
+        return
       }
-
-      // チャンネル名で検索
-      const searchResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${CHANNEL_NAME}&type=channel&key=${apiKey}`
+      // 1. 動画リスト取得
+      const searchRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=${MAX_RESULTS}&type=video&key=${apiKey}`
       )
-      const searchData = await searchResponse.json()
-
+      const searchData = await searchRes.json()
       if (!searchData.items || searchData.items.length === 0) {
-        throw new Error('Channel not found')
+        setErrorMsg('動画が見つかりませんでした')
+        setIsLoadingVideos(false)
+        return
       }
-
-      const channelId = searchData.items[0].id.channelId
-
-      // チャンネルの動画を検索
-      const videosResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=50&type=video&key=${apiKey}`
-      )
-      const videosData = await videosResponse.json()
-
-      if (!videosData.items || videosData.items.length === 0) {
-        throw new Error('No videos found')
-      }
-
-      // 動画IDのリストを作成
-      const videoIds = videosData.items.map((item: any) => item.id.videoId).join(',')
-
-      // 動画の詳細情報を取得
-      const detailsResponse = await fetch(
+      // 2. 動画IDリスト
+      const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',')
+      // 3. 詳細情報取得
+      const detailsRes = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoIds}&key=${apiKey}`
       )
-      const detailsData = await detailsResponse.json()
-
-      // 動画情報を整形
-      const videos = detailsData.items.map((item: any) => ({
+      const detailsData = await detailsRes.json()
+      if (!detailsData.items || detailsData.items.length === 0) {
+        setErrorMsg('動画詳細が取得できませんでした')
+        setIsLoadingVideos(false)
+        return
+      }
+      // 4. 必要な情報を整形
+      const videos: YouTubeVideoInfo[] = detailsData.items.map((item: any) => ({
         id: item.id,
         title: item.snippet.title,
         thumbnailUrl: item.snippet.thumbnails.high.url,
-        duration: item.contentDetails.duration
+        duration: item.contentDetails.duration,
       }))
-
-      // ランダムに6つの動画を選択
-      const randomVideos = videos.sort(() => 0.5 - Math.random()).slice(0, 6)
-      setVideoInfoList(randomVideos)
-    } catch (error) {
-      console.error('Error fetching videos:', error)
-    } finally {
+      // 5. ランダムで6件選択
+      const shuffled = videos.sort(() => 0.5 - Math.random())
+      setVideoInfoList(shuffled.slice(0, 6))
+      setIsLoadingVideos(false)
+    } catch (e) {
+      setErrorMsg('動画の取得中にエラーが発生しました')
       setIsLoadingVideos(false)
     }
   }, [])
 
-  // コンポーネントマウント時に動画を取得
   useEffect(() => {
     fetchVideos()
   }, [fetchVideos])
@@ -642,29 +635,24 @@ export default function ExercisePage() {
           </ul>
         </div>
 
-        {/* おすすめ動画 */}
-        <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-semibold">おすすめエクササイズ動画</h3>
-            <button
-              onClick={fetchVideos}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-            >
-              動画を更新
-            </button>
-          </div>
+        {/* 動画リスト */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">おすすめ動画</h2>
+          {errorMsg && (
+            <div className="text-red-500 mb-4">{errorMsg}</div>
+          )}
           {isLoadingVideos ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-gray-600">動画情報を読み込み中...</p>
-            </div>
+            <div className="text-center py-4">動画を読み込み中...</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {videoInfoList.map((video) => (
                 <div
                   key={video.id}
                   className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => setVideoUrl(`https://www.youtube.com/watch?v=${video.id}`)}
+                  onClick={() => {
+                    setVideoUrl(`https://www.youtube.com/watch?v=${video.id}`)
+                    setIsVideoValid(true)
+                  }}
                 >
                   <div className="relative pb-[56.25%]">
                     <img
@@ -674,28 +662,18 @@ export default function ExercisePage() {
                     />
                   </div>
                   <div className="p-4">
-                    <h4 className="font-medium mb-2 line-clamp-2">{video.title}</h4>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setVideoUrl(`https://www.youtube.com/watch?v=${video.id}`)}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded"
-                      >
-                        この動画を使用
-                      </button>
-                      <a
-                        href={`https://www.youtube.com/watch?v=${video.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-gray-600 hover:bg-gray-700 text-white text-sm py-2 px-3 rounded"
-                      >
-                        YouTube
-                      </a>
-                    </div>
+                    <h3 className="font-semibold text-lg mb-2 line-clamp-2">{video.title}</h3>
                   </div>
                 </div>
               ))}
             </div>
           )}
+          <button
+            onClick={fetchVideos}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+          >
+            動画を更新
+          </button>
         </div>
 
         {/* 完了メッセージ */}
