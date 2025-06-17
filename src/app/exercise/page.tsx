@@ -185,6 +185,32 @@ const yamanoteStations = [
   { id: 'kanda', name: '神田駅', order: 29 }
 ]
 
+// YouTube APIのレスポンス型定義
+interface YouTubeSearchResponse {
+  items: Array<{
+    id: {
+      videoId: string
+    }
+  }>
+}
+
+interface YouTubeVideoDetails {
+  items: Array<{
+    id: string
+    snippet: {
+      title: string
+      thumbnails: {
+        high: {
+          url: string
+        }
+      }
+    }
+    contentDetails: {
+      duration: string
+    }
+  }>
+}
+
 // YouTube Data APIの型定義
 interface YouTubeVideoInfo {
   id: string
@@ -218,6 +244,43 @@ export default function ExercisePage() {
     setIsLoaded(true)
   }, [])
 
+  // 動画完了時の処理
+  const handleVideoEnd = useCallback(async () => {
+    if (!userProgress) return
+
+    try {
+      // 現在の駅を取得
+      const currentStation = yamanoteStations.find(
+        station => station.id === userProgress.currentStation
+      )
+
+      if (!currentStation) {
+        console.error('Current station not found')
+        return
+      }
+
+      // 次の駅を取得
+      const nextStationIndex = currentStation.order
+      const nextStation = yamanoteStations.find(
+        station => station.order === nextStationIndex + 1
+      )
+
+      if (!nextStation) {
+        console.error('Next station not found')
+        return
+      }
+
+      // 進捗を更新
+      const nextStationName = completeExercise()
+      if (nextStationName) {
+        const updatedProgress = getUserProgress()
+        setUserProgress(updatedProgress)
+      }
+    } catch (error) {
+      console.error('Error handling video completion:', error)
+    }
+  }, [userProgress])
+
   // 動画URLが変更されたときにバリデーションを更新
   useEffect(() => {
     const validateYouTubeUrl = (url: string): boolean => {
@@ -225,6 +288,7 @@ export default function ExercisePage() {
       const match = url.match(regExp)
       return !!(match && match[2].length === 11)
     }
+
     setIsVideoValid(validateYouTubeUrl(videoUrl))
   }, [videoUrl])
 
@@ -338,64 +402,77 @@ export default function ExercisePage() {
     }
   }
 
-  // YouTube Data APIから動画情報を取得
-  const fetchVideoInfo = useCallback(async () => {
+  // YouTube動画を取得する関数
+  const fetchVideos = useCallback(async () => {
     try {
+      setIsLoadingVideos(true)
       const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY
       if (!apiKey) {
-        console.error('YouTube API key is not set')
-        return
+        throw new Error('YouTube API key is not set')
       }
+
+      // チャンネル名で検索
+      const searchResponse = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${CHANNEL_NAME}&type=channel&key=${apiKey}`
+      )
+      const searchData = await searchResponse.json()
+
+      if (!searchData.items || searchData.items.length === 0) {
+        throw new Error('Channel not found')
+      }
+
+      const channelId = searchData.items[0].id.channelId
 
       // チャンネルの動画を検索
-      const response = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${CHANNEL_NAME}&type=video&maxResults=50&key=${apiKey}`
+      const videosResponse = await fetch(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=50&type=video&key=${apiKey}`
       )
-      const data = await response.json()
+      const videosData = await videosResponse.json()
 
-      if (data.items) {
-        // 動画IDのリストを作成
-        const videoIds = data.items.map((item: any) => item.id.videoId)
-
-        // 動画の詳細情報を取得
-        const detailsResponse = await fetch(
-          `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoIds.join(',')}&key=${apiKey}`
-        )
-        const detailsData = await detailsResponse.json()
-
-        if (detailsData.items) {
-          // 動画情報を整形
-          const videos = detailsData.items.map((item: any) => ({
-            id: item.id,
-            title: item.snippet.title,
-            thumbnailUrl: item.snippet.thumbnails.medium.url,
-            duration: item.contentDetails.duration
-          }))
-
-          // 動画をランダムにシャッフル
-          const shuffledVideos = videos.sort(() => Math.random() - 0.5)
-          // 最初の6つの動画を選択
-          setVideoInfoList(shuffledVideos.slice(0, 6))
-        }
+      if (!videosData.items || videosData.items.length === 0) {
+        throw new Error('No videos found')
       }
+
+      // 動画IDのリストを作成
+      const videoIds = videosData.items.map((item: any) => item.id.videoId).join(',')
+
+      // 動画の詳細情報を取得
+      const detailsResponse = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoIds}&key=${apiKey}`
+      )
+      const detailsData = await detailsResponse.json()
+
+      // 動画情報を整形
+      const videos = detailsData.items.map((item: any) => ({
+        id: item.id,
+        title: item.snippet.title,
+        thumbnailUrl: item.snippet.thumbnails.high.url,
+        duration: item.contentDetails.duration
+      }))
+
+      // ランダムに6つの動画を選択
+      const randomVideos = videos.sort(() => 0.5 - Math.random()).slice(0, 6)
+      setVideoInfoList(randomVideos)
     } catch (error) {
-      console.error('Error fetching video info:', error)
+      console.error('Error fetching videos:', error)
     } finally {
       setIsLoadingVideos(false)
     }
   }, [])
 
-  // 初回読み込み時に動画を取得
+  // コンポーネントマウント時に動画を取得
   useEffect(() => {
-    fetchVideoInfo()
-  }, [fetchVideoInfo])
+    fetchVideos()
+  }, [fetchVideos])
 
-  // 動画を再読み込みする関数
-  const reloadVideos = useCallback(() => {
-    setIsLoadingVideos(true)
-    setVideoInfoList([])
-    fetchVideoInfo()
-  }, [fetchVideoInfo])
+  // 完了メッセージを閉じる処理
+  const handleClosePopup = useCallback(() => {
+    setShowSlackShare(false)
+    setLastCompletedData(null)
+    // 動画URLをリセット
+    setVideoUrl('')
+    setIsVideoValid(false)
+  }, [])
 
   // ローディング中はサーバーと同じ初期状態を表示
   if (!isLoaded || !userProgress) {
@@ -537,7 +614,7 @@ export default function ExercisePage() {
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-4">
               <YouTubePlayer
                 videoUrl={videoUrl}
-                onVideoComplete={handleVideoComplete}
+                onVideoComplete={handleVideoEnd}
               />
             </div>
           </div>
@@ -596,7 +673,7 @@ export default function ExercisePage() {
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xl font-semibold">おすすめエクササイズ動画</h3>
             <button
-              onClick={reloadVideos}
+              onClick={fetchVideos}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
             >
               動画を更新
@@ -610,16 +687,17 @@ export default function ExercisePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {videoInfoList.map((video) => (
-                <div key={video.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="aspect-video relative">
+                <div
+                  key={video.id}
+                  className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setVideoUrl(`https://www.youtube.com/watch?v=${video.id}`)}
+                >
+                  <div className="relative pb-[56.25%]">
                     <img
                       src={video.thumbnailUrl}
                       alt={video.title}
-                      className="w-full h-full object-cover"
+                      className="absolute top-0 left-0 w-full h-full object-cover"
                     />
-                    <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
-                      {video.duration}
-                    </div>
                   </div>
                   <div className="p-4">
                     <h4 className="font-medium mb-2 line-clamp-2">{video.title}</h4>
@@ -645,7 +723,48 @@ export default function ExercisePage() {
             </div>
           )}
         </div>
+
+        {/* 完了メッセージ */}
+        {showSlackShare && lastCompletedData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+              <h3 className="text-xl font-bold mb-4">お疲れ様でした！</h3>
+              <p className="mb-4">
+                {lastCompletedData.stationProgressed.line.name}の
+                {lastCompletedData.stationProgressed.name}まで進みました！
+              </p>
+              <p className="mb-4">
+                累計{lastCompletedData.user.totalStationsCompleted}駅制覇！
+              </p>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleClosePopup}
+                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
+}
+
+// 動画の長さをフォーマットする関数
+function formatDuration(duration: string): string {
+  const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
+  if (!match) return '不明'
+
+  const hours = (match[1] || '').replace('H', '')
+  const minutes = (match[2] || '').replace('M', '')
+  const seconds = (match[3] || '').replace('S', '')
+
+  let result = ''
+  if (hours) result += `${hours}:`
+  result += `${minutes.padStart(2, '0')}:`
+  result += seconds.padStart(2, '0')
+
+  return result
 }

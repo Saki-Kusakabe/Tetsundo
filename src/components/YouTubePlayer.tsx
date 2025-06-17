@@ -131,18 +131,19 @@ export default function YouTubePlayer({ videoUrl, onVideoComplete }: YouTubePlay
         completionRate: finalCompletionRate
       })
 
-      if (finalCompletionRate >= 0.8) {
-        onVideoComplete({
-          videoUrl,
-          duration,
-          watchTime: Math.floor(currentTime),
-          completionRate: finalCompletionRate
-        })
-      }
+      // 80%達成時のコールバックは既に呼び出されているため、ここでは呼び出さない
+      // if (finalCompletionRate >= 0.8) {
+      //   onVideoComplete({
+      //     videoUrl,
+      //     duration,
+      //     watchTime: Math.floor(currentTime),
+      //     completionRate: finalCompletionRate
+      //   })
+      // }
     } catch (error) {
       console.error('Error in handleVideoEnd:', error)
     }
-  }, [player, duration, onVideoComplete, videoUrl])
+  }, [player, duration, videoUrl])
 
   useEffect(() => {
     // YouTube IFrame API を動的に読み込み

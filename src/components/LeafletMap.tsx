@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import type { Map as LeafletMapType } from 'leaflet'
 
 interface Station {
   id: string
@@ -33,7 +34,7 @@ export default function LeafletMap({
   zoom = 10
 }: LeafletMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
-  const mapInstance = useRef<any>(null)
+  const mapInstance = useRef<LeafletMapType | null>(null)
 
   useEffect(() => {
     const loadMap = async () => {
@@ -75,15 +76,17 @@ export default function LeafletMap({
         console.log('Map created, adding tile layer...')
 
         // Add tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
-        }).addTo(mapInstance.current)
+        if (mapInstance.current) {
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+          }).addTo(mapInstance.current)
+        }
 
         console.log('Tile layer added, drawing railway lines...')
 
         // 鉄道路線を描画
         railwayLines.forEach((line) => {
-          if (line.stations && line.stations.length > 1) {
+          if (line.stations && line.stations.length > 1 && mapInstance.current) {
             // 路線を描画
             const lineCoordinates = line.stations
               .sort((a, b) => a.order - b.order)
@@ -102,34 +105,36 @@ export default function LeafletMap({
             line.stations.forEach((station) => {
               const isCompleted = userProgress.includes(station.id)
 
-              const marker = L.circleMarker([station.latitude, station.longitude], {
-                radius: 6,
-                fillColor: isCompleted ? '#10B981' : '#6B7280',
-                color: '#FFFFFF',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.8
-              }).addTo(mapInstance.current)
+              if (mapInstance.current) {
+                const marker = L.circleMarker([station.latitude, station.longitude], {
+                  radius: 6,
+                  fillColor: isCompleted ? '#10B981' : '#6B7280',
+                  color: '#FFFFFF',
+                  weight: 2,
+                  opacity: 1,
+                  fillOpacity: 0.8
+                }).addTo(mapInstance.current)
 
-              marker.bindPopup(`
-                <div style="font-family: sans-serif;">
-                  <strong style="font-size: 16px;">${station.name}</strong><br>
-                  <span style="color: #666; font-size: 12px;">${line.name}</span><br>
-                  <span style="color: #999; font-size: 11px;">${line.company} / ${line.lineType}</span><br>
-                  <span style="color: #999; font-size: 11px;">順序: ${station.order}</span><br>
-                  <span style="
-                    padding: 2px 6px; 
-                    border-radius: 4px; 
-                    font-size: 10px; 
-                    ${isCompleted
-                  ? 'background-color: #DEF7EC; color: #047857;'
-                  : 'background-color: #F3F4F6; color: #374151;'
-                }
-                  ">
-                    ${isCompleted ? '✓ 通過済み' : '未通過'}
-                  </span>
-                </div>
-              `)
+                marker.bindPopup(`
+                  <div style="font-family: sans-serif;">
+                    <strong style="font-size: 16px;">${station.name}</strong><br>
+                    <span style="color: #666; font-size: 12px;">${line.name}</span><br>
+                    <span style="color: #999; font-size: 11px;">${line.company} / ${line.lineType}</span><br>
+                    <span style="color: #999; font-size: 11px;">順序: ${station.order}</span><br>
+                    <span style="
+                      padding: 2px 6px; 
+                      border-radius: 4px; 
+                      font-size: 10px; 
+                      ${isCompleted
+                    ? 'background-color: #DEF7EC; color: #047857;'
+                    : 'background-color: #F3F4F6; color: #374151;'
+                  }
+                    ">
+                      ${isCompleted ? '✓ 通過済み' : '未通過'}
+                    </span>
+                  </div>
+                `)
+              }
             })
           }
         })

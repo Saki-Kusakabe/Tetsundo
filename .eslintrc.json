@@ -1,0 +1,22 @@
+{
+    "extends": "next/core-web-vitals",
+    "rules": {
+        "@typescript-eslint/no-explicit-any": [
+            "error",
+            {
+                "ignoreRestArgs": true,
+                "fixToUnknown": false
+            }
+        ]
+    },
+    "overrides": [
+        {
+            "files": [
+                "src/components/LeafletMap.tsx"
+            ],
+            "rules": {
+                "@typescript-eslint/no-explicit-any": "off"
+            }
+        }
+    ]
+}
